@@ -34,9 +34,18 @@ class FetcherConfig:
 
 
 @dataclass
+class LLMConfig:
+    provider: str = "openrouter"
+    model: str = "openai/gpt-4o-mini"
+    base_url: str = "https://openrouter.ai/api/v1"
+    api_key_env: str = "OPENROUTER_API_KEY"
+
+
+@dataclass
 class AppConfig:
     fetcher: FetcherConfig = field(default_factory=FetcherConfig)
     trading: TradingConfig = field(default_factory=TradingConfig)
+    llm: LLMConfig = field(default_factory=LLMConfig)
     playbook: dict[str, Any] = field(default_factory=dict)
 
 
@@ -50,6 +59,7 @@ def load_config(path: Path | None = None) -> AppConfig:
     account = raw.get("account", {})
     fetcher_raw = raw.get("fetcher", {})
     trading_raw = raw.get("trading", {})
+    llm_raw = raw.get("llm", {})
 
     fetcher = FetcherConfig(
         primary=fetcher_raw.get("primary", "cnn_archive"),
@@ -73,8 +83,16 @@ def load_config(path: Path | None = None) -> AppConfig:
         take_profit_pct=float(trading_raw.get("take_profit_pct", 0.03)),
     )
 
+    llm = LLMConfig(
+        provider=llm_raw.get("provider", "openrouter"),
+        model=llm_raw.get("model", "openai/gpt-4o-mini"),
+        base_url=llm_raw.get("base_url", "https://openrouter.ai/api/v1"),
+        api_key_env=llm_raw.get("api_key_env", "OPENROUTER_API_KEY"),
+    )
+
     return AppConfig(
         fetcher=fetcher,
         trading=trading,
+        llm=llm,
         playbook=raw.get("playbook", {}),
     )

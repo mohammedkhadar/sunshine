@@ -9,6 +9,12 @@ fetcher:
   truth_social_base: https://truthsocial.com
   poll_limit: 20
 
+llm:
+  provider: openrouter
+  model: openrouter/owl-alpha
+  base_url: https://openrouter.ai/api/v1
+  api_key_env: OPENROUTER_API_KEY
+
 trading:
   mode: dry_run
   max_position_usd: 1000

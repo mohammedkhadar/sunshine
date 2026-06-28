@@ -22,7 +22,6 @@ def cmd_monitor(_: argparse.Namespace) -> int:
 
 def cmd_poll(_: argparse.Namespace) -> int:
     bot = SunshineBot()
-    bot.bootstrap()
     count = bot.poll_once()
     console.print(f"Processed {count} new post(s)")
     return 0
@@ -97,6 +96,61 @@ def cmd_analyze(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_backtest(args: argparse.Namespace) -> int:
+    from sunshine.backtester import run_backtest, print_backtest_result
+    from sunshine.config import load_config
+
+    config = load_config()
+    result = run_backtest(
+        config=config,
+        start_date=args.start,
+        end_date=args.end,
+        max_posts=args.max_posts,
+        use_llm=args.llm,
+        use_hybrid=args.hybrid,
+        use_technical=args.technical,
+        use_regime=args.regime,
+    )
+    print_backtest_result(result)
+    return 0
+
+
+def cmd_fast_backtest(args: argparse.Namespace) -> int:
+    from sunshine.fasttrader import FastBacktester, print_fast_result
+    from sunshine.config import load_config
+
+    config = load_config()
+    bt = FastBacktester(
+        config,
+        score_threshold=args.threshold,
+        sl_pct=args.sl,
+        position_usd=args.position,
+    )
+    result = bt.run(
+        start_date=args.start,
+        end_date=args.end,
+        max_posts=args.max_posts,
+    )
+    print_fast_result(result)
+    return 0
+
+
+def cmd_optimize(args: argparse.Namespace) -> int:
+    from sunshine.backtester import optimize_parameters, print_optimize_results
+    from sunshine.config import load_config
+
+    config = load_config()
+    results = optimize_parameters(
+        config=config,
+        start_date=args.start,
+        end_date=args.end,
+        max_posts=args.max_posts,
+        mode=args.mode,
+    )
+    print_optimize_results(results, top_n=args.top)
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         prog="sunshine",
@@ -113,6 +167,34 @@ def main(argv: list[str] | None = None) -> int:
     analyze.add_argument("--all", action="store_true", help="Show posts without signals too")
     analyze.add_argument("--text", type=str, help="Analyze arbitrary text")
     analyze.set_defaults(func=cmd_analyze)
+
+    backtest = sub.add_parser("backtest", help="Run backtest on historical posts")
+    backtest.add_argument("--start", type=str, default="2025-01-01", help="Start date (YYYY-MM-DD)")
+    backtest.add_argument("--end", type=str, default=None, help="End date (YYYY-MM-DD)")
+    backtest.add_argument("--max-posts", type=int, default=None, help="Limit number of posts to process")
+    backtest.add_argument("--llm", action="store_true", help="Use LLM analyzer (requires OPENROUTER_API_KEY)")
+    backtest.add_argument("--hybrid", action="store_true", help="Rule-based gatekeeper then LLM refinement")
+    backtest.add_argument("--technical", action="store_true", help="Add SMA50/RSI14 technical filter")
+    backtest.add_argument("--regime", action="store_true", help="Add SPY 200-day MA market regime filter")
+    backtest.set_defaults(func=cmd_backtest)
+
+    fast_backtest = sub.add_parser("fast-backtest", help="Event-driven backtest: LLM impact scoring, tight stops, same-day exit")
+    fast_backtest.add_argument("--start", type=str, default="2025-01-01", help="Start date (YYYY-MM-DD)")
+    fast_backtest.add_argument("--end", type=str, default=None, help="End date (YYYY-MM-DD)")
+    fast_backtest.add_argument("--max-posts", type=int, default=None, help="Limit posts to process")
+    fast_backtest.add_argument("--threshold", type=float, default=7.0, help="Minimum impact score (1-10)")
+    fast_backtest.add_argument("--sl", type=float, default=0.0075, help="Stop-loss fraction (e.g. 0.0075 = 0.75%%)")
+    fast_backtest.add_argument("--position", type=float, default=1000.0, help="Notional per trade ($)")
+    fast_backtest.set_defaults(func=cmd_fast_backtest)
+
+    optimize = sub.add_parser("optimize", help="Sweep TP/SL/confidence to find optimal params")
+    optimize.add_argument("--start", type=str, default="2025-03-01", help="Start date (YYYY-MM-DD)")
+    optimize.add_argument("--end", type=str, default="2025-06-01", help="End date (YYYY-MM-DD)")
+    optimize.add_argument("--max-posts", type=int, default=500, help="Posts to process per run")
+    optimize.add_argument("--mode", type=str, default="rule", choices=["rule", "hybrid", "llm"],
+                          help="Analyzer mode for optimization")
+    optimize.add_argument("--top", type=int, default=10, help="Show top N results")
+    optimize.set_defaults(func=cmd_optimize)
 
     args = parser.parse_args(argv)
     return args.func(args)

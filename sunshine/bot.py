@@ -8,7 +8,7 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
 
-from sunshine.analyzer import SignalAnalyzer
+from sunshine.analyzer import create_analyzer, SignalAnalyzer
 from sunshine.config import AppConfig, load_config
 from sunshine.fetcher import create_fetcher
 from sunshine.storage import Storage
@@ -23,9 +23,10 @@ class SunshineBot:
         self.config = config or load_config()
         self.storage = Storage()
         self.fetcher = create_fetcher(self.config.fetcher)
-        self.analyzer = SignalAnalyzer(
+        self.analyzer = create_analyzer(
             self.config.playbook,
-            min_confidence=self.config.trading.min_confidence,
+            self.config.trading,
+            llm_config=self.config.llm,
         )
         self.trader = create_trader(self.config.trading, self.storage)
 
@@ -52,7 +53,8 @@ class SunshineBot:
         table.add_row("Category", signal.category)
         table.add_row("Sentiment", signal.sentiment)
         table.add_row("Confidence", f"{signal.confidence:.0%}")
-        table.add_row("Keywords", ", ".join(signal.matched_keywords))
+        kw = ", ".join(signal.matched_keywords) if signal.matched_keywords else "(LLM)"
+        table.add_row("Keywords", kw)
         if signal.llm_summary:
             table.add_row("LLM", signal.llm_summary)
         for action in signal.actions:
