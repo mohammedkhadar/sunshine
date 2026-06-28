@@ -21,6 +21,9 @@ class Trader(ABC):
     def execute(self, signal: Signal) -> list[dict]:
         ...
 
+    def market_open(self) -> bool:
+        return True
+
 
 class DryRunTrader(Trader):
     def __init__(self, config: TradingConfig, storage: Storage) -> None:
@@ -121,7 +124,7 @@ class AlpacaTrader(Trader):
         self._MarketOrderRequest = MarketOrderRequest
         return self._client
 
-    def _market_open(self) -> bool:
+    def market_open(self) -> bool:
         try:
             clock = self._get_client().get_clock()
             return clock.is_open
@@ -157,7 +160,7 @@ class AlpacaTrader(Trader):
     def execute(self, signal: Signal) -> list[dict]:
         results: list[dict] = []
 
-        if not self._market_open():
+        if not self.market_open():
             logger.warning("Market closed — skipping trade for %s", signal.category)
             return results
 

@@ -10,5 +10,6 @@ COPY --from=builder /usr/local/bin /usr/local/bin
 COPY sunshine/ sunshine/
 COPY config.yaml .
 COPY entrypoint.py .
+COPY entrypoint_job.py .
 ENV SUNSHINE_DB_PATH=/tmp/sunshine.db
 CMD ["python", "entrypoint.py"]

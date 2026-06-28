@@ -116,6 +116,10 @@ class SunshineBot:
 
         while True:
             try:
+                if not self.trader.market_open():
+                    console.print("[yellow]Market closed — sleeping 15 min[/yellow]")
+                    time.sleep(900)
+                    continue
                 count = self.poll_once()
                 console.print(f"[cyan]{datetime.now(timezone.utc):%H:%M:%S}[/cyan] polled — {count} post(s)")
             except KeyboardInterrupt:

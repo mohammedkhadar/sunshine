@@ -12,18 +12,30 @@ steps:
       - gcr.io/$PROJECT_ID/sunshine
 
   - name: gcr.io/google.com/cloudsdktool/cloud-sdk
-    entrypoint: gcloud
+    entrypoint: bash
     args:
-      - run
-      - deploy
-      - sunshine
-      - --image=gcr.io/$PROJECT_ID/sunshine
-      - --platform=managed
-      - --region=us-central1
-      - --allow-unauthenticated
-      - --min-instances=1
-      - --max-instances=1
-      - --set-env-vars=POLL_INTERVAL=30,SUNSHINE_DB_PATH=/tmp/sunshine.db
-      - --set-secrets=ALPACA_API_KEY=alpaca-api-key:latest,ALPACA_SECRET_KEY=alpaca-secret-key:latest,ANTHROPIC_API_KEY=anthropic-api-key:latest
+      - -c
+      - |
+        gcloud run jobs update sunshine-job \
+          --image=gcr.io/$PROJECT_ID/sunshine \
+          --command="python3,entrypoint_job.py" \
+          --region=us-central1 \
+          --tasks=1 \
+          --max-retries=0 \
+          --task-timeout=300 \
+          --set-env-vars=POLL_INTERVAL=30,SUNSHINE_DB_PATH=/tmp/sunshine.db,SUNSHINE_STATE_BUCKET=$_STATE_BUCKET \
+          --set-secrets=ALPACA_API_KEY=alpaca-api-key:latest,ALPACA_SECRET_KEY=alpaca-secret-key:latest \
+        || gcloud run jobs create sunshine-job \
+          --image=gcr.io/$PROJECT_ID/sunshine \
+          --command="python3,entrypoint_job.py" \
+          --region=us-central1 \
+          --tasks=1 \
+          --max-retries=0 \
+          --task-timeout=300 \
+          --set-env-vars=POLL_INTERVAL=30,SUNSHINE_DB_PATH=/tmp/sunshine.db,SUNSHINE_STATE_BUCKET=$_STATE_BUCKET \
+          --set-secrets=ALPACA_API_KEY=alpaca-api-key:latest,ALPACA_SECRET_KEY=alpaca-secret-key:latest
 
 timeout: 600s
+
+substitutions:
+  _STATE_BUCKET: sunshine-state
