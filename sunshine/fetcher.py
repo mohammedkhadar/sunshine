@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 from abc import ABC, abstractmethod
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import requests
 from bs4 import BeautifulSoup
@@ -29,7 +29,12 @@ def parse_timestamp(value: str) -> datetime:
 
 class PostFetcher(ABC):
     @abstractmethod
-    def fetch_latest(self, since_id: str | None = None, limit: int = 20) -> list[TruthPost]:
+    def fetch_latest(
+        self,
+        since_id: str | None = None,
+        since_time: datetime | None = None,
+        limit: int = 20,
+    ) -> list[TruthPost]:
         ...
 
 
@@ -61,15 +66,23 @@ class CnnArchiveFetcher(PostFetcher):
         self._cache = posts
         return posts
 
-    def fetch_latest(self, since_id: str | None = None, limit: int = 20) -> list[TruthPost]:
+    def fetch_latest(
+        self,
+        since_id: str | None = None,
+        since_time: datetime | None = None,
+        limit: int = 20,
+    ) -> list[TruthPost]:
         self._cache = None
         all_posts = self._load_all()
-        if since_id is None:
+        if since_id is None and since_time is None:
             return all_posts[:limit]
 
-        since_int = int(since_id)
-        new_posts = [p for p in all_posts if int(p.id) > since_int]
-        return new_posts[:limit]
+        if since_id:
+            since_int = int(since_id)
+            all_posts = [p for p in all_posts if int(p.id) > since_int]
+        if since_time:
+            all_posts = [p for p in all_posts if p.created_at >= since_time]
+        return all_posts[:limit]
 
 
 class TruthSocialFetcher(PostFetcher):
@@ -92,7 +105,12 @@ class TruthSocialFetcher(PostFetcher):
             session.headers.update(HEADERS)
             return session
 
-    def fetch_latest(self, since_id: str | None = None, limit: int = 20) -> list[TruthPost]:
+    def fetch_latest(
+        self,
+        since_id: str | None = None,
+        since_time: datetime | None = None,
+        limit: int = 20,
+    ) -> list[TruthPost]:
         params: dict[str, str | int] = {"limit": limit, "exclude_replies": "true"}
         if since_id:
             params["since_id"] = since_id
@@ -112,15 +130,16 @@ class TruthSocialFetcher(PostFetcher):
         for item in resp.json():
             if item.get("reblog"):
                 continue
-            posts.append(
-                TruthPost(
-                    id=str(item["id"]),
-                    content=strip_html(item.get("content", "")),
-                    created_at=parse_timestamp(item["created_at"]),
-                    url=item.get("url", ""),
-                    source="truth_social",
-                )
+            post = TruthPost(
+                id=str(item["id"]),
+                content=strip_html(item.get("content", "")),
+                created_at=parse_timestamp(item["created_at"]),
+                url=item.get("url", ""),
+                source="truth_social",
             )
+            if since_time and post.created_at < since_time:
+                continue
+            posts.append(post)
         return posts
 
 

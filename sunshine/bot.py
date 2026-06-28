@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from rich.console import Console
 from rich.panel import Panel
@@ -28,7 +28,6 @@ class SunshineBot:
             min_confidence=self.config.trading.min_confidence,
         )
         self.trader = create_trader(self.config.trading, self.storage)
-        self._since_id: str | None = None
 
     def process_post(self, post) -> bool:
         is_new = self.storage.save_post(post)
@@ -70,9 +69,9 @@ class SunshineBot:
         )
         console.print(table)
 
-    def poll_once(self) -> int:
+    def poll_once(self, since_time: datetime | None = None) -> int:
         posts = self.fetcher.fetch_latest(
-            since_id=self._since_id,
+            since_time=since_time,
             limit=self.config.fetcher.poll_limit,
         )
 
@@ -80,22 +79,9 @@ class SunshineBot:
             return 0
 
         posts.sort(key=lambda p: int(p.id))
-        processed = 0
         for post in posts:
             self.process_post(post)
-            processed += 1
-
-        self._since_id = max(posts, key=lambda p: int(p.id)).id
-        return processed
-
-    def bootstrap(self) -> None:
-        """Seed _since_id from the latest post so we only process new posts going forward."""
-        posts = self.fetcher.fetch_latest(limit=1)
-        if posts:
-            self._since_id = posts[0].id
-            console.print(
-                f"[green]Bootstrapped — watching for posts newer than {self._since_id}[/green]"
-            )
+        return len(posts)
 
     def run(self) -> None:
         logging.basicConfig(
@@ -112,7 +98,7 @@ class SunshineBot:
                 subtitle="Truth Social → signals → trades",
             )
         )
-        self.bootstrap()
+        since_time = datetime.now(timezone.utc) - timedelta(minutes=5)
 
         while True:
             try:
@@ -120,7 +106,8 @@ class SunshineBot:
                     console.print("[yellow]Market closed — sleeping 15 min[/yellow]")
                     time.sleep(900)
                     continue
-                count = self.poll_once()
+                count = self.poll_once(since_time=since_time)
+                since_time = datetime.now(timezone.utc) - timedelta(minutes=5)
                 console.print(f"[cyan]{datetime.now(timezone.utc):%H:%M:%S}[/cyan] polled — {count} post(s)")
             except KeyboardInterrupt:
                 console.print("\n[yellow]Stopped.[/yellow]")
