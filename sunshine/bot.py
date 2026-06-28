@@ -28,6 +28,7 @@ class SunshineBot:
             min_confidence=self.config.trading.min_confidence,
         )
         self.trader = create_trader(self.config.trading, self.storage)
+        self._since_id: str | None = None
 
     def process_post(self, post) -> bool:
         is_new = self.storage.save_post(post)
@@ -40,8 +41,8 @@ class SunshineBot:
             return True
 
         self._print_signal(post, signal)
-        signal_id = self.storage.save_signal(signal)
-        self.trader.execute(signal, signal_id)
+        self.storage.save_signal(signal)
+        self.trader.execute(signal)
         return True
 
     def _print_signal(self, post, signal) -> None:
@@ -70,9 +71,8 @@ class SunshineBot:
         console.print(table)
 
     def poll_once(self) -> int:
-        since_id = self.storage.get_last_seen_post_id()
         posts = self.fetcher.fetch_latest(
-            since_id=since_id,
+            since_id=self._since_id,
             limit=self.config.fetcher.poll_limit,
         )
 
@@ -85,19 +85,16 @@ class SunshineBot:
             self.process_post(post)
             processed += 1
 
-        newest = max(posts, key=lambda p: int(p.id))
-        self.storage.set_last_seen_post_id(newest.id)
+        self._since_id = max(posts, key=lambda p: int(p.id)).id
         return processed
 
     def bootstrap(self) -> None:
-        """Seed last_seen_post_id from latest post so we only trade on new posts."""
-        if self.storage.get_last_seen_post_id() is not None:
-            return
+        """Seed _since_id from the latest post so we only process new posts going forward."""
         posts = self.fetcher.fetch_latest(limit=1)
         if posts:
-            self.storage.set_last_seen_post_id(posts[0].id)
+            self._since_id = posts[0].id
             console.print(
-                f"[green]Bootstrapped — watching for posts newer than {posts[0].id}[/green]"
+                f"[green]Bootstrapped — watching for posts newer than {self._since_id}[/green]"
             )
 
     def run(self) -> None:

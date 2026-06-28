@@ -18,6 +18,8 @@ class TradingConfig:
     max_position_usd: float = 1000.0
     max_daily_trades: int = 10
     min_confidence: float = 0.55
+    stop_loss_pct: float = 0.05
+    take_profit_pct: float = 0.03
 
 
 @dataclass
@@ -67,6 +69,8 @@ def load_config(path: Path | None = None) -> AppConfig:
         max_position_usd=float(trading_raw.get("max_position_usd", 1000)),
         max_daily_trades=int(trading_raw.get("max_daily_trades", 10)),
         min_confidence=float(trading_raw.get("min_confidence", 0.55)),
+        stop_loss_pct=float(trading_raw.get("stop_loss_pct", 0.05)),
+        take_profit_pct=float(trading_raw.get("take_profit_pct", 0.03)),
     )
 
     return AppConfig(

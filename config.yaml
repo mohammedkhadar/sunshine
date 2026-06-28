@@ -34,8 +34,9 @@ playbook:
       - exempt
       - rollback
       - deal with china
-    long: [NUE, X, STLD]
-    short: [SPY, BABA, JD]
+    long: [NUE, CLF, STLD]
+    bearish: [SH]
+    short: [BABA, JD]
     sentiment: bearish_market
 
   fed_criticism:
@@ -45,7 +46,8 @@ playbook:
       - interest rate
       - powell
     long: [GLD]
-    short: [SPY, QQQ]
+    bearish: [SH]
+    short: []
     sentiment: bearish_market
 
   crypto_positive:
@@ -79,3 +81,71 @@ playbook:
     long: [XLE, XOM, CVX]
     short: []
     sentiment: bullish_sector
+
+  immigration:
+    keywords:
+      - border
+      - immigration
+      - migrant
+      - deportation
+      - wall
+    long: [CXW, GEO]
+    short: []
+    sentiment: bullish_sector
+
+  healthcare:
+    keywords:
+      - healthcare
+      - drug price
+      - medicare
+      - pharma
+      - insulin
+    negative_phrases:
+      - price control
+      - regulation
+    long: [UNH, LLY]
+    short: []
+    sentiment: bullish_sector
+
+  big_tech:
+    keywords:
+      - big tech
+      - section 230
+      - antitrust
+      - social media
+      - tech monopoly
+    long: [META]
+    short: [GOOGL, MSFT]
+    sentiment: bearish_market
+
+  infrastructure:
+    keywords:
+      - infrastructure
+      - bridge
+      - road
+      - rebuild
+      - construction
+    long: [CAT, PWR]
+    short: []
+    sentiment: bullish_sector
+
+  china_relations:
+    keywords:
+      - china
+      - beijing
+      - xi
+      - chinese
+      - trade deal
+    negative_phrases:
+      - tariff
+      - sanction
+      - ban
+      - decouple
+    positive_phrases:
+      - deal
+      - agreement
+      - partnership
+    long: [CAT, DE]
+    bearish: [SH]
+    short: [BABA]
+    sentiment: bearish_market

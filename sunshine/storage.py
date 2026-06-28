@@ -1,13 +1,14 @@
 from __future__ import annotations
 
 import json
+import os
 import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
 
 from sunshine.models import Signal, TruthPost
 
-DEFAULT_DB = Path(__file__).resolve().parents[1] / "data" / "sunshine.db"
+DEFAULT_DB = Path(os.getenv("SUNSHINE_DB_PATH", Path(__file__).resolve().parents[1] / "data" / "sunshine.db"))
 
 
 class Storage:

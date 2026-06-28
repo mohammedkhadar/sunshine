@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 import os
 import re
+import time
 from typing import Any
 
 from sunshine.models import Side, Signal, TradeAction, TruthPost
@@ -10,6 +11,9 @@ from sunshine.models import Side, Signal, TradeAction, TruthPost
 logger = logging.getLogger(__name__)
 
 TICKER_PATTERN = re.compile(r"\$([A-Z]{1,5})\b")
+FREQ_WINDOW = 30 * 60
+FREQ_BOOST_PER_HIT = 0.05
+FREQ_BOOST_MAX = 0.15
 
 
 def extract_tickers(text: str) -> list[str]:
@@ -21,6 +25,7 @@ class SignalAnalyzer:
         self.playbook = playbook
         self.min_confidence = min_confidence
         self._anthropic = self._init_llm()
+        self._category_hits: dict[str, list[float]] = {}
 
     def _init_llm(self):
         api_key = os.getenv("ANTHROPIC_API_KEY")
@@ -32,6 +37,16 @@ class SignalAnalyzer:
             return anthropic.Anthropic(api_key=api_key)
         except ImportError:
             return None
+
+    def _frequency_boost(self, category: str) -> float:
+        now = time.time()
+        times = self._category_hits.setdefault(category, [])
+        times.append(now)
+        times[:] = [t for t in times if now - t < FREQ_WINDOW]
+        count = len(times)
+        if count >= 2:
+            return min(FREQ_BOOST_PER_HIT * (count - 1), FREQ_BOOST_MAX)
+        return 0.0
 
     def analyze(self, post: TruthPost) -> Signal | None:
         rule_signal = self._rule_based(post)
@@ -61,12 +76,14 @@ class SignalAnalyzer:
                 confidence = max(confidence - 0.2, 0.3)
                 sentiment = "bullish_market"
 
+            confidence += self._frequency_boost(category)
             confidence = min(confidence, 0.95)
             if confidence < self.min_confidence:
                 continue
 
             long_symbols = list(rules.get("long", []))
             short_symbols = list(rules.get("short", []))
+            bearish_symbols = list(rules.get("bearish", []))
             actions: list[TradeAction] = []
 
             for symbol in long_symbols:
@@ -76,6 +93,15 @@ class SignalAnalyzer:
                         side=Side.BUY,
                         notional_usd=0,
                         reason=f"{category}: keyword match ({', '.join(matched)})",
+                    )
+                )
+            for symbol in bearish_symbols:
+                actions.append(
+                    TradeAction(
+                        symbol=symbol,
+                        side=Side.BUY,
+                        notional_usd=0,
+                        reason=f"{category}: bearish hedge ({', '.join(matched)})",
                     )
                 )
             for symbol in short_symbols:
@@ -135,7 +161,7 @@ class SignalAnalyzer:
                 signal.confidence = float(conf_match.group(1))
 
             if "ACTION=hold" in text and signal.confidence < self.min_confidence:
-                return None  # type: ignore[return-value]
+                return None
         except Exception as exc:
             logger.warning("LLM enrichment failed: %s", exc)
 
