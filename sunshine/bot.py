@@ -120,8 +120,7 @@ class SunshineBot:
         while True:
             try:
                 count = self.poll_once()
-                if count:
-                    console.print(f"[cyan]{datetime.now(timezone.utc):%H:%M:%S}[/cyan] processed {count} post(s)")
+                console.print(f"[cyan]{datetime.now(timezone.utc):%H:%M:%S}[/cyan] polled — {count} post(s)")
             except KeyboardInterrupt:
                 console.print("\n[yellow]Stopped.[/yellow]")
                 break
