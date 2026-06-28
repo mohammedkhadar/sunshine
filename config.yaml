@@ -1,0 +1,81 @@
+account:
+  username: realDonaldTrump
+  account_id: "107780257626128497"
+
+fetcher:
+  # cnn_archive is reliable and free; truth_social uses curl_cffi (may hit Cloudflare)
+  primary: cnn_archive
+  cnn_archive_url: https://ix.cnn.io/data/truth-social/truth_archive.json
+  truth_social_base: https://truthsocial.com
+  poll_limit: 20
+
+trading:
+  mode: dry_run
+  max_position_usd: 1000
+  max_daily_trades: 10
+  min_confidence: 0.55
+
+playbook:
+  tariff_escalation:
+    keywords:
+      - tariff
+      - tariffs
+      - trade war
+      - sanctions
+      - decoupling
+    negative_phrases:
+      - increase tariff
+      - raise tariff
+      - new tariff
+      - impose tariff
+    positive_phrases:
+      - pause tariff
+      - delay tariff
+      - exempt
+      - rollback
+      - deal with china
+    long: [NUE, X, STLD]
+    short: [SPY, BABA, JD]
+    sentiment: bearish_market
+
+  fed_criticism:
+    keywords:
+      - federal reserve
+      - fed chair
+      - interest rate
+      - powell
+    long: [GLD]
+    short: [SPY, QQQ]
+    sentiment: bearish_market
+
+  crypto_positive:
+    keywords:
+      - bitcoin
+      - crypto
+      - digital asset
+      - strategic reserve
+    long: [COIN, MSTR, IBIT]
+    short: []
+    sentiment: bullish_crypto
+
+  defense:
+    keywords:
+      - defense
+      - military
+      - nato
+      - shipbuilding
+    long: [LMT, RTX, NOC]
+    short: []
+    sentiment: bullish_sector
+
+  energy:
+    keywords:
+      - drill
+      - oil
+      - energy dominance
+      - pipeline
+      - liquefied natural gas
+      - lng
+    long: [XLE, XOM, CVX]
+    short: []
+    sentiment: bullish_sector
