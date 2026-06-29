@@ -127,7 +127,6 @@ def cmd_fast_backtest(args: argparse.Namespace) -> int:
         stop_atr_multiple=args.atr_multiple,
         position_usd=args.position,
         daily_loss_limit=args.daily_loss_limit,
-        skip_fridays=not args.fridays,
     )
     result = bt.run(
         start_date=args.start,
@@ -190,7 +189,6 @@ def main(argv: list[str] | None = None) -> int:
     fast_backtest.add_argument("--atr-multiple", type=float, default=1.5, help="ATR(14) multiple for stop distance")
     fast_backtest.add_argument("--position", type=float, default=1000.0, help="Notional per trade ($)")
     fast_backtest.add_argument("--daily-loss-limit", type=float, default=150.0, help="Max daily loss before stopping ($)")
-    fast_backtest.add_argument("--fridays", action="store_true", help="Trade on Fridays (default: skip)")
     fast_backtest.set_defaults(func=cmd_fast_backtest)
 
     optimize = sub.add_parser("optimize", help="Sweep TP/SL/confidence to find optimal params")

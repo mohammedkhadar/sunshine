@@ -131,7 +131,6 @@ class FastBacktester:
         max_daily: int = 8,
         stop_atr_multiple: float = 1.5,
         daily_loss_limit: float = 150.0,
-        skip_fridays: bool = True,
     ) -> None:
         self.config = config
         from pathlib import Path
@@ -142,7 +141,6 @@ class FastBacktester:
         self.max_daily = max_daily
         self.stop_atr_multiple = stop_atr_multiple
         self.daily_loss_limit = daily_loss_limit
-        self.skip_fridays = skip_fridays
         self._price_data: dict[str, pd.DataFrame] = {}
         self._atr: dict[str, float] = {}
 
@@ -302,9 +300,6 @@ class FastBacktester:
                 daily_trade_count = 0
                 daily_pnl = 0.0
                 last_trade_day = trade_day
-
-            if self.skip_fridays and trade_day.weekday() == 4:
-                continue
 
             if daily_trade_count >= self.max_daily:
                 continue
