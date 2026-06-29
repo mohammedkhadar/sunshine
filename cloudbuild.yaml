@@ -24,7 +24,7 @@ steps:
           --max-retries=0 \
           --task-timeout=300 \
           --set-env-vars=POLL_INTERVAL=30,SUNSHINE_DB_PATH=/tmp/sunshine.db \
-          --set-secrets=ALPACA_API_KEY=alpaca-api-key:latest,ALPACA_SECRET_KEY=alpaca-secret-key:latest \
+          --set-secrets=ALPACA_API_KEY=alpaca-api-key:latest,ALPACA_SECRET_KEY=alpaca-secret-key:latest,OPENROUTER_API_KEY=openrouter-api-key:latest \
         || gcloud run jobs create sunshine-job \
           --image=gcr.io/$PROJECT_ID/sunshine \
           --command="python3,entrypoint_job.py" \
@@ -33,6 +33,6 @@ steps:
           --max-retries=0 \
           --task-timeout=300 \
           --set-env-vars=POLL_INTERVAL=30,SUNSHINE_DB_PATH=/tmp/sunshine.db \
-          --set-secrets=ALPACA_API_KEY=alpaca-api-key:latest,ALPACA_SECRET_KEY=alpaca-secret-key:latest
+          --set-secrets=ALPACA_API_KEY=alpaca-api-key:latest,ALPACA_SECRET_KEY=alpaca-secret-key:latest,OPENROUTER_API_KEY=openrouter-api-key:latest
 
 timeout: 600s

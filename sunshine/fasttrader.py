@@ -117,7 +117,8 @@ class FastBacktester:
     - Topic-filtered posts → LLM impact score
     - Trade only when score >= threshold (default 7/10)
     - Entry at next trading day's open
-    - Tight stop-loss (0.5-1%)
+    - ATR(14)-based stop at 1.5x (falls back to sl_pct)
+    - Daily loss limit (default $150)
     - Same-day exit (proxy for 30-90 min hold)
     """
 
@@ -125,9 +126,12 @@ class FastBacktester:
         self,
         config: AppConfig,
         score_threshold: float = 7.0,
-        sl_pct: float = 0.0075,
+        sl_pct: float = 0.03,
         position_usd: float = 1000.0,
         max_daily: int = 8,
+        stop_atr_multiple: float = 1.5,
+        daily_loss_limit: float = 150.0,
+        skip_fridays: bool = True,
     ) -> None:
         self.config = config
         from pathlib import Path
@@ -136,7 +140,11 @@ class FastBacktester:
         self.sl_pct = sl_pct
         self.position_usd = position_usd
         self.max_daily = max_daily
+        self.stop_atr_multiple = stop_atr_multiple
+        self.daily_loss_limit = daily_loss_limit
+        self.skip_fridays = skip_fridays
         self._price_data: dict[str, pd.DataFrame] = {}
+        self._atr: dict[str, float] = {}
 
     def download_prices(self, start: str, end: str) -> None:
         import time as _time
@@ -151,11 +159,30 @@ class FastBacktester:
                         break
                     df.columns = [col[0] if isinstance(col, tuple) else col for col in df.columns]
                     self._price_data[ticker] = df
+                    atr = self._compute_atr(df)
+                    if atr is not None:
+                        self._atr[ticker] = atr
                     break
                 except Exception as exc:
                     logger.warning("yfinance %s attempt %d/2 failed: %s", ticker, attempt + 1, exc)
                     if attempt == 0:
                         _time.sleep(2)
+
+    @staticmethod
+    def _compute_atr(df: pd.DataFrame, period: int = 14) -> float | None:
+        if len(df) < period + 1:
+            return None
+        high = df["High"].values
+        low = df["Low"].values
+        close = df["Close"].values
+        tr = np.maximum(
+            high[1:] - low[1:],
+            np.maximum(
+                np.abs(high[1:] - close[:-1]),
+                np.abs(low[1:] - close[:-1]),
+            ),
+        )
+        return float(pd.Series(tr).ewm(span=period, min_periods=period).mean().iloc[-1])
 
     def _ts_to_dt(self, ts) -> datetime:
         if hasattr(ts, "to_pydatetime"):
@@ -208,13 +235,19 @@ class FastBacktester:
         exit_dt = self._ts_to_dt(df.index[idx])
         exit_dt = exit_dt.replace(hour=16, minute=0, second=0, tzinfo=timezone.utc)
 
+        atr = self._atr.get(symbol)
+        if atr and atr > 0:
+            stop_distance = self.stop_atr_multiple * atr
+        else:
+            stop_distance = entry_price * self.sl_pct
+
         if side == "buy":
-            stop = entry_price * (1 - self.sl_pct)
+            stop = entry_price - stop_distance
             if low <= stop:
                 return stop, exit_dt, "stop"
             return close, exit_dt, "close"
         else:
-            stop = entry_price * (1 + self.sl_pct)
+            stop = entry_price + stop_distance
             if high >= stop:
                 return stop, exit_dt, "stop"
             return close, exit_dt, "close"
@@ -251,7 +284,7 @@ class FastBacktester:
         if not posts:
             return FastBacktestResult()
 
-        data_start = posts[0].created_at.strftime("%Y-%m-%d")
+        data_start = (posts[0].created_at - timedelta(days=30)).strftime("%Y-%m-%d")
         data_end = (posts[-1].created_at + timedelta(days=5)).strftime("%Y-%m-%d")
         self.download_prices(data_start, data_end)
 
@@ -260,15 +293,27 @@ class FastBacktester:
 
         result = FastBacktestResult()
         daily_trade_count = 0
+        daily_pnl = 0.0
         last_trade_day = None
 
         for s in scored:
             trade_day = s["created_at"].date()
             if last_trade_day != trade_day:
                 daily_trade_count = 0
+                daily_pnl = 0.0
                 last_trade_day = trade_day
 
+            if self.skip_fridays and trade_day.weekday() == 4:
+                continue
+
             if daily_trade_count >= self.max_daily:
+                continue
+
+            if daily_pnl <= -self.daily_loss_limit:
+                logger.info(
+                    "Daily loss limit of $%.0f hit for %s, skipping",
+                    self.daily_loss_limit, trade_day,
+                )
                 continue
 
             entry_dt = self._get_entry_day(s["created_at"])
@@ -318,6 +363,7 @@ class FastBacktester:
                 )
                 result.trades.append(trade)
                 daily_trade_count += 1
+                daily_pnl += pnl
 
         result.compute()
         return result
