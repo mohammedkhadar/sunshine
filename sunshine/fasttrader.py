@@ -17,8 +17,10 @@ from sunshine.scorer import ImpactScorer
 logger = logging.getLogger(__name__)
 
 BACKTEST_TICKERS = [
-    "NUE", "CLF",
-    "GLD", "XLE", "XOM", "CVX", "COP", "OIH", "XOP",
+    "NUE", "AA",
+    "DE", "CAT",
+    "BZ=F",
+    "GLD",
     "LMT", "RTX", "NOC",
 ]
 
@@ -114,12 +116,15 @@ class FastBacktestResult:
 
 class FastBacktester:
     """Backtester for the event-driven strategy:
-    - Topic-filtered posts → LLM impact score
+    - Topic-filtered posts -> LLM impact score
     - Trade only when score >= threshold (default 7/10)
-    - Entry at next trading day's open
-    - ATR(14)-based stop at 1.5x (falls back to sl_pct)
+    - ATR(14)-based stop at 1.5x and TP at 0.8x
     - Daily loss limit (default $150)
-    - Same-day exit (proxy for 30-90 min hold)
+    - Entry/exit rules by day and time:
+      * Mon-Thu 9:30-4pm ET: close entry, next-close exit (overnight, no lookahead)
+      * Fri before 4pm ET: open entry, close exit (same-day, avoid weekend gap)
+      * Pre-market (before 9:30am): open entry, close exit (same-day)
+      * After 4pm any day: next open entry, close exit (same-day)
     """
 
     def __init__(
@@ -130,16 +135,19 @@ class FastBacktester:
         position_usd: float = 1000.0,
         max_daily: int = 8,
         stop_atr_multiple: float = 1.5,
+        tp_atr_multiple: float = 0.8,
         daily_loss_limit: float = 150.0,
     ) -> None:
         self.config = config
         from pathlib import Path
         cache_path = str(Path.home() / ".sunshine" / "score_cache.json")
         self.scorer = ImpactScorer(config.llm, threshold=score_threshold, cache_path=cache_path)
+        self.score_threshold = score_threshold
         self.sl_pct = sl_pct
         self.position_usd = position_usd
         self.max_daily = max_daily
         self.stop_atr_multiple = stop_atr_multiple
+        self.tp_atr_multiple = tp_atr_multiple
         self.daily_loss_limit = daily_loss_limit
         self._price_data: dict[str, pd.DataFrame] = {}
         self._atr: dict[str, float] = {}
@@ -193,8 +201,19 @@ class FastBacktester:
             ts = ts.tz_convert("America/New_York")
         return ts
 
+    def _use_close_entry(self, dt: datetime) -> bool:
+        dt_et = self._normalize_dt(dt)
+        if dt_et.weekday() == 4 and dt_et.hour < 16:
+            return False
+        market_open = dt_et.replace(hour=9, minute=30, second=0, microsecond=0)
+        market_close = dt_et.replace(hour=16, minute=0, second=0, microsecond=0)
+        return market_open <= dt_et < market_close
+
     def _get_entry_day(self, dt: datetime) -> datetime | None:
-        target = self._normalize_dt(dt).normalize()
+        dt_et = self._normalize_dt(dt)
+        cutoff = dt_et.replace(hour=16, minute=0, second=0, microsecond=0)
+        target = dt_et.normalize()
+        side: str = "left" if dt_et < cutoff else "right"
         for sym in BACKTEST_TICKERS:
             df = self._price_data.get(sym)
             if df is not None and not df.empty:
@@ -203,7 +222,7 @@ class FastBacktester:
                     target_local = target.tz_localize(None)
                 else:
                     target_local = target.tz_localize("America/New_York")
-                idx = df_index.searchsorted(target_local, side="right")
+                idx = df_index.searchsorted(target_local, side=side)
                 if idx < len(df):
                     entry_dt = self._ts_to_dt(df.index[idx])
                     entry_dt = entry_dt.replace(hour=9, minute=30, second=0, tzinfo=timezone.utc)
@@ -213,6 +232,7 @@ class FastBacktester:
 
     def _simulate_trade(
         self, symbol: str, side: str, entry_price: float, dt: datetime,
+        close_entry: bool = False,
     ) -> tuple[float, datetime, str]:
         df = self._price_data.get(symbol)
         if df is None or df.empty:
@@ -222,7 +242,8 @@ class FastBacktester:
         df_index = pd.DatetimeIndex(df.index)
         if df_index.tz is None:
             target = target.tz_localize(None)
-        idx = df_index.searchsorted(target, side="right")
+        exit_side = "right" if close_entry else "left"
+        idx = df_index.searchsorted(target, side=exit_side)
         if idx >= len(df):
             return entry_price, dt, "close"
 
@@ -236,16 +257,24 @@ class FastBacktester:
         atr = self._atr.get(symbol)
         if atr and atr > 0:
             stop_distance = self.stop_atr_multiple * atr
+            tp_distance = self.tp_atr_multiple * atr
         else:
             stop_distance = entry_price * self.sl_pct
+            tp_distance = stop_distance * 2
 
         if side == "buy":
             stop = entry_price - stop_distance
+            tp = entry_price + tp_distance
+            if high >= tp:
+                return tp, exit_dt, "tp"
             if low <= stop:
                 return stop, exit_dt, "stop"
             return close, exit_dt, "close"
         else:
             stop = entry_price + stop_distance
+            tp = entry_price - tp_distance
+            if low <= tp:
+                return tp, exit_dt, "tp"
             if high >= stop:
                 return stop, exit_dt, "stop"
             return close, exit_dt, "close"
@@ -287,6 +316,10 @@ class FastBacktester:
         self.download_prices(data_start, data_end)
 
         scored = self.scorer.score_many(posts)
+        before = len(scored)
+        scored = [s for s in scored if s.get("score", 0) >= self.score_threshold]
+        if before != len(scored):
+            logger.info("Filtered %d posts below threshold %s", before - len(scored), self.score_threshold)
         logger.info("Scored %d/%d posts above threshold", len(scored), len(posts))
 
         result = FastBacktestResult()
@@ -315,20 +348,21 @@ class FastBacktester:
             if entry_dt is None:
                 continue
 
+            close_entry = self._use_close_entry(s["created_at"])
             position_usd = self._position_for_score(s["score"])
 
             for symbol in s["symbols"]:
                 if daily_trade_count >= self.max_daily:
                     break
 
-                entry_price = self._get_entry_price(symbol, entry_dt)
+                entry_price = self._get_entry_price(symbol, entry_dt, use_close=close_entry)
                 if entry_price is None or entry_price <= 0:
                     continue
 
                 side = "buy" if s["direction"] == "bullish" else "sell"
 
                 exit_price, exit_time, exit_reason = self._simulate_trade(
-                    symbol, side, entry_price, entry_dt,
+                    symbol, side, entry_price, entry_dt, close_entry=close_entry,
                 )
 
                 if side == "buy":
@@ -363,7 +397,7 @@ class FastBacktester:
         result.compute()
         return result
 
-    def _get_entry_price(self, symbol: str, dt: datetime) -> float | None:
+    def _get_entry_price(self, symbol: str, dt: datetime, use_close: bool = False) -> float | None:
         df = self._price_data.get(symbol)
         if df is None or df.empty:
             return None
@@ -371,11 +405,11 @@ class FastBacktester:
         df_index = pd.DatetimeIndex(df.index)
         if df_index.tz is None:
             target = target.tz_localize(None)
-        idx = df_index.searchsorted(target, side="right")
+        idx = df_index.searchsorted(target, side="left")
         if idx >= len(df):
             return None
         row = df.iloc[idx]
-        return float(row["Open"])
+        return float(row["Close" if use_close else "Open"])
 
 
 def print_fast_result(result: FastBacktestResult) -> None:

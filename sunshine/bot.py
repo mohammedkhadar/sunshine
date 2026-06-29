@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 import time
 from datetime import datetime, timedelta, timezone
+from typing import Any
 
 from rich.console import Console
 from rich.panel import Panel
@@ -72,17 +73,26 @@ class SunshineBot:
         console.print(table)
 
     def poll_once(self, since_time: datetime | None = None) -> int:
-        posts = self.fetcher.fetch_latest(
-            since_time=since_time,
-            limit=self.config.fetcher.poll_limit,
-        )
+        last_id = self.storage.get_last_seen_post_id()
+
+        kwargs: dict[str, Any] = {"limit": self.config.fetcher.poll_limit}
+        if last_id:
+            kwargs["since_id"] = last_id
+        elif since_time:
+            kwargs["since_time"] = since_time
+        else:
+            kwargs["since_time"] = datetime.now(timezone.utc) - timedelta(minutes=15)
+
+        posts = self.fetcher.fetch_latest(**kwargs)
 
         if not posts:
             return 0
 
         posts.sort(key=lambda p: int(p.id))
+        max_id = posts[-1].id
         for post in posts:
             self.process_post(post)
+        self.storage.set_last_seen_post_id(max_id)
         return len(posts)
 
     def run(self) -> None:
@@ -100,7 +110,6 @@ class SunshineBot:
                 subtitle="Truth Social → signals → trades",
             )
         )
-        since_time = datetime.now(timezone.utc) - timedelta(minutes=5)
 
         while True:
             try:
@@ -108,9 +117,9 @@ class SunshineBot:
                     console.print("[yellow]Market closed — sleeping 15 min[/yellow]")
                     time.sleep(900)
                     continue
-                count = self.poll_once(since_time=since_time)
-                since_time = datetime.now(timezone.utc) - timedelta(minutes=5)
-                console.print(f"[cyan]{datetime.now(timezone.utc):%H:%M:%S}[/cyan] polled — {count} post(s)")
+                count = self.poll_once()
+                if count:
+                    console.print(f"[cyan]{datetime.now(timezone.utc):%H:%M:%S}[/cyan] polled — {count} post(s)")
             except KeyboardInterrupt:
                 console.print("\n[yellow]Stopped.[/yellow]")
                 break

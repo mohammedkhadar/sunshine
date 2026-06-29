@@ -125,6 +125,7 @@ def cmd_fast_backtest(args: argparse.Namespace) -> int:
         score_threshold=args.threshold,
         sl_pct=args.sl,
         stop_atr_multiple=args.atr_multiple,
+        tp_atr_multiple=args.tp_multiple,
         position_usd=args.position,
         daily_loss_limit=args.daily_loss_limit,
     )
@@ -187,6 +188,7 @@ def main(argv: list[str] | None = None) -> int:
     fast_backtest.add_argument("--threshold", type=float, default=7.0, help="Minimum impact score (1-10)")
     fast_backtest.add_argument("--sl", type=float, default=0.03, help="Stop-loss fraction fallback (e.g. 0.03 = 3%%)")
     fast_backtest.add_argument("--atr-multiple", type=float, default=1.5, help="ATR(14) multiple for stop distance")
+    fast_backtest.add_argument("--tp-multiple", type=float, default=0.8, help="ATR(14) multiple for take-profit target")
     fast_backtest.add_argument("--position", type=float, default=1000.0, help="Notional per trade ($)")
     fast_backtest.add_argument("--daily-loss-limit", type=float, default=150.0, help="Max daily loss before stopping ($)")
     fast_backtest.set_defaults(func=cmd_fast_backtest)

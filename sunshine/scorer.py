@@ -15,14 +15,19 @@ TOPIC_KEYWORDS = [
     "tariff", "tariffs", "trade war",
     "federal reserve", "fed chair", "powell", "interest rate",
     "oil", "drill", "energy dominance", "lng", "pipeline", "opec",
-    "sanctions",     "sanction",
+    "sanctions", "sanction",
     "china", "russia", "north korea", "iran",
     "military", "defense", "pentagon",
+    "farmer", "farmers", "agriculture", "crops", "dairy",
 ]
 
 SECTOR_SYMBOLS: dict[str, dict[str, list[str]]] = {
     "tariffs": {
-        "bullish": ["NUE", "CLF"],
+        "bullish": ["NUE", "AA"],
+        "bearish": [],
+    },
+    "agriculture": {
+        "bullish": ["DE", "CAT"],
         "bearish": [],
     },
     "fed": {
@@ -30,7 +35,7 @@ SECTOR_SYMBOLS: dict[str, dict[str, list[str]]] = {
         "bearish": [],
     },
     "oil": {
-        "bullish": ["XLE", "XOM", "CVX", "COP", "OIH", "XOP"],
+        "bullish": ["BZ=F"],
         "bearish": [],
     },
     "sanctions": {
@@ -43,7 +48,7 @@ SECTOR_SYMBOLS: dict[str, dict[str, list[str]]] = {
 class ImpactScorer:
     """Scores posts for market impact on a 1-10 scale.
     1-3 minimal, 4-6 moderate, 7-8 significant, 9-10 major.
-    Only scores posts matching predefined topics (tariffs, China, Fed, oil, sanctions).
+    Only scores posts matching predefined topics (tariffs, agriculture, Fed, oil, sanctions).
     """
 
     def __init__(
@@ -111,7 +116,7 @@ class ImpactScorer:
             "Respond with valid JSON only (no markdown, no extra text):\n"
             '{"score":<1-10>,"direction":"bullish","sector":"tariffs","reasoning":"one sentence"}\n\n'
             "direction must be one of: bullish, bearish, neutral\n"
-            "sector must be one of: tariffs, fed, oil, sanctions, other"
+            "sector must be one of: tariffs, agriculture, fed, oil, sanctions, other"
         )
 
     def _parse(self, raw: dict) -> dict | None:
